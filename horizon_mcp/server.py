@@ -1,0 +1,231 @@
+"""
+HorizonMCP server
+"""
+
+# docustrings are LLM generated as it's the AI using it anyway
+
+from __future__ import annotations
+from mcp.server.fastmcp import FastMCP
+from .core import config, pdx
+from .tools import blocks, events, gfx, lint, pseudo, tokens, varflow
+
+mcp = FastMCP("horizon-mcp")
+
+
+@mcp.tool()
+def list_event_namespaces() -> str:
+    """List every event namespace declared in the mod and which file declares it.
+
+    Cheap way to see valid namespaces before creating an event.
+    """
+    ns_map = pdx.index_event_namespaces()
+    if not ns_map:
+        return "No event namespaces found."
+    lines = []
+    for ns, path in sorted(ns_map.items()):
+        lines.append(f"{ns}\t{path.name}")
+    return "\n".join(lines)
+
+
+@mcp.tool()
+def next_event_id(namespace: str) -> str:
+    """Return the next free event id for a namespace, e.g. 'usa_flavor.12'."""
+    ns_map = pdx.index_event_namespaces()
+    if namespace not in ns_map:
+        return f"Namespace '{namespace}' not found. Use list_event_namespaces."
+    n = pdx.find_next_event_id(ns_map[namespace], namespace)
+    return f"{namespace}.{n}"
+
+
+@mcp.tool()
+def create_event(
+    namespace: str,
+    options: list[events.EventOption],
+    title: str | None = None,
+    desc: str | None = None,
+    event_type: str = "country",
+    picture: str | None = None,
+    is_triggered_only: bool = True,
+    trigger: str | None = None,
+    mean_time_to_happen: str | None = None,
+    target_file: str | None = None,
+    loc_file: str | None = None,
+    placeholder_loc: bool = True,
+    dry_run: bool = False,
+) -> str:
+    """Create a HOI4 event in othmod: writes the script block AND its localisation.
+
+    The event id is auto-assigned (next free in the namespace).
+
+    By default (placeholder_loc=True) no prose is written by this tool - title,
+    desc, and option button text are all generic PLACEHOLDER_* strings meant to
+    be filled in by hand (no-AI-writing policy for loc). Pass
+    placeholder_loc=False plus explicit title/desc/option.name only when the
+    exact wording has been supplied verbatim and should be written as-is.
+
+    Set dry_run=True first to preview the exact script + loc that would be written
+    without changing any files. For a NEW namespace, pass target_file (the events
+    file to create/append to).
+    """
+    result = events.create_event(
+        namespace=namespace, title=title, desc=desc, options=options,
+        event_type=event_type, picture=picture,
+        is_triggered_only=is_triggered_only, trigger=trigger,
+        mean_time_to_happen=mean_time_to_happen, target_file=target_file,
+        loc_file=loc_file, placeholder_loc=placeholder_loc, dry_run=dry_run,
+    )
+    return result.summary()
+
+
+@mcp.tool()
+def fix_oos_token(error_message: str) -> str:
+    """Fix a "dynamic token can cause OOS" warning by registering the token.
+
+    Paste the game's warning text verbatim, e.g.:
+    'token operation_steal_tech_airforce_cost is a dynamic token, this can
+    cause OOS depending on how it's used, please add it as a synchronized
+    dynamic token to prevent OOS's'
+
+    Extracts the token name and appends it to
+    common/synchronized_dynamic_tokens/tokens.txt (no-op if already present).
+    """
+    token = tokens.extract_token(error_message)
+    added = tokens.add_synchronized_token(token)
+    if added:
+        return f"Added '{token}' to synchronized_dynamic_tokens/tokens.txt"
+    return f"'{token}' is already a synchronized dynamic token, no change made."
+
+
+@mcp.tool()
+def fix_oos_tokens_from_log(log_path: str | None = None) -> str:
+    """Scan the game's error.log for every OOS dynamic-token warning and fix them all.
+
+    Defaults to the standard macOS Paradox log path
+    (~/Documents/Paradox Interactive/Hearts of Iron IV/logs/error.log), or set
+    LOG_PATH / pass log_path to point elsewhere. Adds every distinct
+    token found to synchronized_dynamic_tokens/tokens.txt in one pass.
+    """
+    return tokens.fix_all_from_log(log_path)
+
+
+@mcp.tool()
+def check_gfx_references(file: str | None = None) -> str:
+    """Verify every GFX_ sprite reference resolves to a defined sprite.
+
+    Indexes sprite definitions from the mod's .gfx files plus vanilla HOI4's
+    (GAME_PATH, defaulting to the standard Steam install). Pass `file` as a
+    mod-relative path (e.g. 'interface/OTH/OTH_proxy_screen.gui') to check one
+    file, or omit it to sweep every .gui file and scripted_guis script.
+
+    Bracket-substituted names like GFX_foo_[ROOT.GetTag] can't be fully
+    resolved statically; for those it reports which concrete variants exist
+    (or flags the prefix if none do).
+    """
+    if file:
+        return gfx.check_file(file)
+    return gfx.check_all()
+
+
+@mcp.tool()
+def validate_braces(file: str | None = None) -> str:
+    """Check brace balance in mod script files (comments excluded from counts).
+
+    Pass a mod-relative path to check one file, or omit to sweep every .txt/.gui/.gfx
+    under common/, events/, and interface/. Run after any hand edit or block removal.
+    """
+    if file:
+        return blocks.validate_file(file)
+    return blocks.validate_all()
+
+
+@mcp.tool()
+def remove_named_block(file: str, name: str, dry_run: bool = False) -> str:
+    """Remove one named block from a Paradox script/gui file, brace-safely.
+
+    `name` matches either a gui element (the block containing `name = "<name>"`)
+    or a script definition (`<name> = {` header). Refuses to act if the name is
+    ambiguous or the file is unbalanced. Set dry_run=True to preview the removal
+    (line range + first lines of the block) without writing.
+    """
+    return blocks.remove_block(file, name, dry_run)
+
+
+@mcp.tool()
+def check_variable_flow(prefix: str | None = None) -> str:
+    """Cross-reference every dynamic variable/array write against its reads.
+
+    Reports WRITE-ONLY variables (computed but never consumed - dead data) and
+    READ-ONLY variables (consumed but never fed - a system silently running on
+    nothing). Scans common/, events/, and localisation reads ([?var]).
+
+    Pass `prefix` (e.g. 'OTH_proxy') to filter the report to one system's
+    variables; omit it for a full sweep (noisier). Lexical analysis - loop
+    value-vars and meta_effect-composed names can be false positives, so treat
+    findings as leads, not verdicts.
+    """
+    return varflow.check_flow(prefix)
+
+
+@mcp.tool()
+def check_tokens_append_only() -> str:
+    """Verify tokens.txt only changed by EOF appends since git HEAD.
+
+    synchronized_dynamic_tokens/tokens.txt is positional across MP clients:
+    reordering, mid-file inserts, or deletions shift token ids and cause OOS.
+    Run before committing any change that touches it.
+    """
+    return tokens.verify_append_only()
+
+
+@mcp.tool()
+def add_synchronized_token(token: str) -> str:
+    """Append a token to synchronized_dynamic_tokens/tokens.txt (EOF, the only safe place).
+
+    No-op if the token is already registered. Use this instead of hand-editing
+    the file - mid-file inserts cause OOS in multiplayer.
+    """
+    added = tokens.add_synchronized_token(token)
+    if added:
+        return f"Added '{token}' at EOF of synchronized_dynamic_tokens/tokens.txt"
+    return f"'{token}' is already registered, no change made."
+
+
+@mcp.tool()
+def lint_trigger_contexts(file: str | None = None) -> str:
+    """Lint trigger contexts for effect statements and unguarded division.
+
+    Scripted-GUI `triggers`/`visible` blocks and everything under
+    common/scripted_triggers are trigger contexts: persistent-state effects and
+    loop effects there are silently ignored or misbehave. Also flags
+    divide_[temp_]variable by a dynamic variable with no nearby zero/exists
+    guard (per-frame 'divide by zero' log spam in GUI contexts).
+
+    Pass a mod-relative file path to lint one file, or omit to sweep
+    scripted_guis + scripted_triggers. Temp-variable math is tolerated.
+    """
+    return lint.lint(file)
+
+
+@mcp.tool()
+def check_pseudodecisions() -> str:
+    """Verify every pseudodecision registration's six-file contract is intact.
+
+    For each OTH_init_proxy_pseudodecision call in common/ideas it checks:
+    token registered in tokens.txt; every effects/triggers token has its
+    <token>_<suffix> scripted effect/trigger; a backing decision <token> and
+    dummy mission <token>_timeout exist in common/decisions (mission-type
+    pseudodecisions are exempt from the dummy); loc keys <token> and
+    <token>_desc exist. Every missing leg fails silently in-game, so run this
+    after adding or renaming any pseudodecision.
+    """
+    return pseudo.check()
+
+
+def main() -> None:
+    # Fail fast with a clear message if the mod path is wrong.
+    config.mod_path()
+    mcp.run()
+
+
+if __name__ == "__main__":
+    main()

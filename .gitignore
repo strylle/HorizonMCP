@@ -1,0 +1,15 @@
+# Python virtual environment (machine-specific, disposable - rebuild with: python3 -m venv .venv)
+.venv/
+venv/
+
+# Python bytecode / caches
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Machine-specific config (contains local paths - copy .mcp.json.example instead)
+.mcp.json
+
+# Editor / OS
+.DS_Store

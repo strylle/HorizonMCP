@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "horizon": {
+      "command": "/absolute/path/to/HorizonMCP/.venv/bin/horizon-mcp",
+      "env": {
+        "MOD_PATH": "/path/to/your/othmod"
+      }
+    }
+  }
+}

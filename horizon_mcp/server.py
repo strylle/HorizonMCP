@@ -7,7 +7,7 @@ HorizonMCP server
 from __future__ import annotations
 from mcp.server.fastmcp import FastMCP
 from .core import config, pdx
-from .tools import blocks, events, gfx, lint, pseudo, tokens, varflow
+from .tools import blocks, events, gfx, legislation, lint, pseudo, tokens, varflow
 
 mcp = FastMCP("horizon-mcp")
 
@@ -219,6 +219,55 @@ def check_pseudodecisions() -> str:
     after adding or renaming any pseudodecision.
     """
     return pseudo.check()
+
+
+@mcp.tool()
+def create_us_legislation(
+    token: str,
+    name: str | None = None,
+    mission_desc: str | None = None,
+    effect_tooltip: str | None = None,
+    timeout_days: int = 120,
+    dry_run: bool = False,
+) -> str:
+    """Create a US congress legislation (bill) entry: all 5 files of boilerplate at once.
+
+    Given a bill token (lowercase snake_case, e.g. 'USA_clean_air_act') this
+    registers the token in tokens.txt (EOF append), writes the four per-bill
+    defined_texts (phase/votes/attributes/sponsor) plus the four dispatcher
+    entries in OTH_USA_legislation_loc.txt, a placeholder <token>_effect in
+    the legislation scripted effects, a <token>_mission decision under
+    USA_congress_management, and the loc keys (<token>, <token>_mission,
+    <token>_mission_desc with the standard stage/votes/sponsor block,
+    <token>.tt).
+
+    By default all prose is PLACEHOLDER_* (no-AI-writing policy for loc);
+    pass name / mission_desc / effect_tooltip only with wording supplied
+    verbatim. The bill's actual passage effect must be filled in by hand in
+    <token>_effect, and the returned introduce-snippet pasted into whatever
+    focus/event spawns the bill. Set dry_run=True to preview everything
+    without writing.
+    """
+    return legislation.create(
+        token=token, name=name, mission_desc=mission_desc,
+        effect_tooltip=effect_tooltip, timeout_days=timeout_days,
+        dry_run=dry_run,
+    )
+
+
+@mcp.tool()
+def delete_us_legislation(token: str, dry_run: bool = False) -> str:
+    """Delete a US congress legislation (bill) entry, brace-safely.
+
+    Removes the bill's four defined_texts and its dispatcher entries from
+    OTH_USA_legislation_loc.txt, its <token>_effect scripted effect, its
+    <token>_mission decision, and its loc keys. Deliberately does NOT touch
+    tokens.txt (positional/append-only - removing lines causes OOS; a dead
+    token is harmless) and does not hunt down bespoke introduce-sites in
+    focuses/events - those are reported for hand review. Set dry_run=True
+    to preview.
+    """
+    return legislation.delete(token, dry_run)
 
 
 def main() -> None:

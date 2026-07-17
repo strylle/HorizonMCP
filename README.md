@@ -8,7 +8,7 @@ A Model Context Protocol server for HOI4 modding, built & optimized for use by t
 
 2. Because Over the Horizon is highly complex & utlizes numerous custom mechanics (i.e space mechanic using a ton of math & scripted guis, a proxy mechanic utilizing an entirely custom pseudodecision gui and backend), not only are existing tools inefficient, but we needed a custom solution not at the whims of anyone else.
 
-3. While yes, Mythos-class and even Opus-class models are incredibly good at figuring out what I'm trying to do and planning accordingly, at times it makes mistakes and frequently consumes a ton of tokens figuring out context.
+3. While yes, Mythos-class and even Opus-class models are incredibly good at figuring out what I'm trying to do and planning accordingly, at times it makes mistakes and frequently consumes a ton of tokens figuring out context. It's primary purpose is to save tokens. 
 
 ### Setup
 

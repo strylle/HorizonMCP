@@ -78,34 +78,24 @@ def create_event(
 
 
 @mcp.tool()
-def fix_oos_token(error_message: str) -> str:
-    """Fix a "dynamic token can cause OOS" warning by registering the token.
+def fix_oos_tokens(text: str | None = None, log_path: str | None = None) -> str:
+    """Fix "dynamic token can cause OOS" warnings by registering the tokens.
 
-    Paste the game's warning text verbatim, e.g.:
+    Pass `text` to scan a pasted warning or log snippet verbatim, e.g.:
     'token operation_steal_tech_airforce_cost is a dynamic token, this can
     cause OOS depending on how it's used, please add it as a synchronized
     dynamic token to prevent OOS's'
 
-    Extracts the token name and appends it to
-    common/synchronized_dynamic_tokens/tokens.txt (no-op if already present).
+    Omit `text` to instead scan the game's error.log file (defaults to the
+    standard macOS Paradox log path
+    ~/Documents/Paradox Interactive/Hearts of Iron IV/logs/error.log, or set
+    LOG_PATH / pass log_path to point elsewhere).
+
+    Either way, extracts every distinct token found and appends new ones to
+    common/synchronized_dynamic_tokens/tokens.txt (no-op for tokens already
+    registered).
     """
-    token = tokens.extract_token(error_message)
-    added = tokens.add_synchronized_token(token)
-    if added:
-        return f"Added '{token}' to synchronized_dynamic_tokens/tokens.txt"
-    return f"'{token}' is already a synchronized dynamic token, no change made."
-
-
-@mcp.tool()
-def fix_oos_tokens_from_log(log_path: str | None = None) -> str:
-    """Scan the game's error.log for every OOS dynamic-token warning and fix them all.
-
-    Defaults to the standard macOS Paradox log path
-    (~/Documents/Paradox Interactive/Hearts of Iron IV/logs/error.log), or set
-    LOG_PATH / pass log_path to point elsewhere. Adds every distinct
-    token found to synchronized_dynamic_tokens/tokens.txt in one pass.
-    """
-    return tokens.fix_all_from_log(log_path)
+    return tokens.fix_all(text=text, log_path=log_path)
 
 
 @mcp.tool()

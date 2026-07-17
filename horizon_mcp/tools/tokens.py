@@ -13,17 +13,6 @@ from ..core import config, pdx
 _ERROR_TOKEN_RE = re.compile(r"token\s+(\S+)\s+is a dynamic token", re.IGNORECASE)
 
 
-def extract_token(error_message: str) -> str:
-    """Pull the token name out of the game's OOS warning text."""
-    match = _ERROR_TOKEN_RE.search(error_message)
-    if not match:
-        raise ValueError(
-            "Could not find a token name in that message. Expected text like "
-            "'token <name> is a dynamic token, this can cause OOS...'."
-        )
-    return match.group(1)
-
-
 def extract_tokens(text: str) -> list[str]:
     """Pull every distinct OOS-warning token name out of a block of text.
 
@@ -101,18 +90,26 @@ def verify_append_only() -> str:
     )
 
 
-def fix_all_from_log(log_path: str | None = None) -> str:
-    """Scan a HOI4 error.log for every OOS dynamic-token warning and fix them all.
+def fix_all(text: str | None = None, log_path: str | None = None) -> str:
+    """Extract every OOS dynamic-token warning from pasted text or an error.log and fix them all.
 
-    Returns a summary of which tokens were newly added vs. already registered.
+    If `text` is given it's scanned directly (e.g. a pasted warning or snippet
+    of log output). Otherwise reads the error.log at `log_path` (or the
+    configured/default location). Returns a summary of which tokens were
+    newly added vs. already registered.
     """
-    path = config.log_file(log_path)
-    if not path.exists():
-        raise FileNotFoundError(f"Log file not found: {path}")
-    text = path.read_text(encoding="utf-8", errors="replace")
+    if text is None:
+        path = config.log_file(log_path)
+        if not path.exists():
+            raise FileNotFoundError(f"Log file not found: {path}")
+        text = path.read_text(encoding="utf-8", errors="replace")
+        source = str(path)
+    else:
+        source = "pasted text"
+
     found = extract_tokens(text)
     if not found:
-        return f"No OOS dynamic-token warnings found in {path}."
+        return f"No OOS dynamic-token warnings found in {source}."
 
     added = []
     already = []
@@ -124,7 +121,7 @@ def fix_all_from_log(log_path: str | None = None) -> str:
             already.append(token)
 
     lines = []
-    lines.append(f"Scanned {path} - found {len(found)} distinct token(s).")
+    lines.append(f"Scanned {source} - found {len(found)} distinct token(s).")
     if len(added) > 0:
         lines.append(f"Added ({len(added)}): {', '.join(added)}")
     if len(already) > 0:

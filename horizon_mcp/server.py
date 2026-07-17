@@ -212,6 +212,70 @@ def check_pseudodecisions() -> str:
 
 
 @mcp.tool()
+def create_proxy_pseudodecision(
+    token: str,
+    proxy: str,
+    supporter: str,
+    kind: str = "decision",
+    effects: list[str] | None = None,
+    triggers: list[str] | None = None,
+    cost: int | None = None,
+    intel_base_cost: int | None = None,
+    days_remove: int = 30,
+    days_re_enable: int = 30,
+    mission_days_timeout: int = 31,
+    mission_is_good: bool = True,
+    recurring: bool = False,
+    fire_only_once: bool = False,
+    ai_will_do: int | None = None,
+    dry_run: bool = False,
+) -> str:
+    """Create a proxy-war pseudodecision: all six contract files of boilerplate at once.
+
+    Writes the registration under `supporter`'s block inside `proxy`'s on_add in
+    _proxy_init_ideas.txt, the backing decision (+ _timeout dummy) or backing
+    mission in OTH_proxy_wars.txt, payload/trigger stubs, PLACEHOLDER loc keys
+    (<token> and <token>_desc - no-AI-prose policy), and registers the token at
+    EOF of synchronized tokens.txt.
+
+    kind='decision': uses days_remove/days_re_enable; pass cost (political
+    power) OR intel_base_cost (wires the full 4-piece intel-cost contract:
+    custom_cost_trigger, OTH_intel_cost text + dummy decision, and the
+    OTH_spend_intel_currency block in complete_effect).
+    kind='mission': uses mission_days_timeout/mission_is_good; effects default
+    to [timeout_effect]. recurring=True makes it self-reactivate in
+    timeout_effect and count against the country's proxy_recurring_aid_cap.
+
+    effects from: complete_effect, remove_effect, cancel_effect, timeout_effect.
+    triggers from: visible, available, activation, custom_cost_trigger.
+    Payload/trigger stubs are placeholders to fill in by hand. Set dry_run=True
+    to preview everything without writing. Ends with a full contract check.
+    """
+    return pseudo.create(
+        token=token, proxy=proxy, supporter=supporter, kind=kind,
+        effects=effects, triggers=triggers, cost=cost,
+        intel_base_cost=intel_base_cost, days_remove=days_remove,
+        days_re_enable=days_re_enable, mission_days_timeout=mission_days_timeout,
+        mission_is_good=mission_is_good, recurring=recurring,
+        fire_only_once=fire_only_once, ai_will_do=ai_will_do, dry_run=dry_run,
+    )
+
+
+@mcp.tool()
+def delete_proxy_pseudodecision(token: str, dry_run: bool = False) -> str:
+    """Delete a proxy-war pseudodecision from all its contract files, brace-safely.
+
+    Removes its registration block from _proxy_init_ideas.txt, its backing
+    decision/mission and _timeout dummy from OTH_proxy_wars.txt, every
+    <token>_<suffix> payload effect and trigger, and its loc keys. Deliberately
+    does NOT touch tokens.txt (positional/append-only - removing lines causes
+    OOS; a dead token is harmless) and does not hunt bespoke references in
+    GUIs/events - those are reported for hand review. Set dry_run=True to preview.
+    """
+    return pseudo.delete(token, dry_run)
+
+
+@mcp.tool()
 def create_us_legislation(
     token: str,
     name: str | None = None,

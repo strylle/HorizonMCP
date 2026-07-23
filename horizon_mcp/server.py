@@ -14,10 +14,7 @@ mcp = FastMCP("horizon-mcp")
 
 @mcp.tool()
 def list_event_namespaces() -> str:
-    """List every event namespace declared in the mod and which file declares it.
-
-    Cheap way to see valid namespaces before creating an event.
-    """
+    """List event namespaces + declaring file. Check before create_event."""
     ns_map = pdx.index_event_namespaces()
     if not ns_map:
         return "No event namespaces found."
@@ -53,19 +50,11 @@ def create_event(
     placeholder_loc: bool = True,
     dry_run: bool = False,
 ) -> str:
-    """Create a HOI4 event in othmod: writes the script block AND its localisation.
+    """Create a HOI4 event: script block + loc. Id auto-assigned (next free in namespace).
 
-    The event id is auto-assigned (next free in the namespace).
-
-    By default (placeholder_loc=True) no prose is written by this tool - title,
-    desc, and option button text are all generic PLACEHOLDER_* strings meant to
-    be filled in by hand (no-AI-writing policy for loc). Pass
-    placeholder_loc=False plus explicit title/desc/option.name only when the
-    exact wording has been supplied verbatim and should be written as-is.
-
-    Set dry_run=True first to preview the exact script + loc that would be written
-    without changing any files. For a NEW namespace, pass target_file (the events
-    file to create/append to).
+    Default placeholder_loc=True writes PLACEHOLDER_* text (no-AI-prose policy);
+    pass False + explicit title/desc/option.name only with verbatim wording.
+    New namespace: pass target_file. dry_run=True previews without writing.
     """
     result = events.create_event(
         namespace=namespace, title=title, desc=desc, options=options,
@@ -79,37 +68,21 @@ def create_event(
 
 @mcp.tool()
 def fix_oos_tokens(text: str | None = None, log_path: str | None = None) -> str:
-    """Fix "dynamic token can cause OOS" warnings by registering the tokens.
+    """Fix "dynamic token can cause OOS" warnings by registering them.
 
-    Pass `text` to scan a pasted warning or log snippet verbatim, e.g.:
-    'token operation_steal_tech_airforce_cost is a dynamic token, this can
-    cause OOS depending on how it's used, please add it as a synchronized
-    dynamic token to prevent OOS's'
-
-    Omit `text` to instead scan the game's error.log file (defaults to the
-    standard macOS Paradox log path
-    ~/Documents/Paradox Interactive/Hearts of Iron IV/logs/error.log, or set
-    LOG_PATH / pass log_path to point elsewhere).
-
-    Either way, extracts every distinct token found and appends new ones to
-    common/synchronized_dynamic_tokens/tokens.txt (no-op for tokens already
-    registered).
+    Pass `text` to scan a pasted warning/log snippet, or omit to scan error.log
+    (LOG_PATH env or standard macOS Paradox path, override with log_path).
+    Appends new tokens to tokens.txt; no-op for already-registered ones.
     """
     return tokens.fix_all(text=text, log_path=log_path)
 
 
 @mcp.tool()
 def check_gfx_references(file: str | None = None) -> str:
-    """Verify every GFX_ sprite reference resolves to a defined sprite.
+    """Verify every GFX_ sprite reference resolves (mod .gfx + vanilla via GAME_PATH).
 
-    Indexes sprite definitions from the mod's .gfx files plus vanilla HOI4's
-    (GAME_PATH, defaulting to the standard Steam install). Pass `file` as a
-    mod-relative path (e.g. 'interface/OTH/OTH_proxy_screen.gui') to check one
-    file, or omit it to sweep every .gui file and scripted_guis script.
-
-    Bracket-substituted names like GFX_foo_[ROOT.GetTag] can't be fully
-    resolved statically; for those it reports which concrete variants exist
-    (or flags the prefix if none do).
+    Pass `file` (mod-relative) to check one file, omit to sweep all .gui/scripted_guis.
+    Bracket-substituted names (GFX_foo_[ROOT.GetTag]) report concrete variants found.
     """
     if file:
         return gfx.check_file(file)
@@ -118,11 +91,9 @@ def check_gfx_references(file: str | None = None) -> str:
 
 @mcp.tool()
 def validate_braces(file: str | None = None) -> str:
-    """Check brace balance in mod script files (comments excluded from counts).
-
-    Pass a mod-relative path to check one file, or omit to sweep every .txt/.gui/.gfx
-    under common/, events/, and interface/. Run after any hand edit or block removal.
-    """
+    """Check brace balance (comments excluded). Pass a mod-relative path for one
+    file, or omit to sweep .txt/.gui/.gfx under common/, events/, interface/.
+    Run after any hand edit or block removal."""
     if file:
         return blocks.validate_file(file)
     return blocks.validate_all()
@@ -132,26 +103,20 @@ def validate_braces(file: str | None = None) -> str:
 def remove_named_block(file: str, name: str, dry_run: bool = False) -> str:
     """Remove one named block from a Paradox script/gui file, brace-safely.
 
-    `name` matches either a gui element (the block containing `name = "<name>"`)
-    or a script definition (`<name> = {` header). Refuses to act if the name is
-    ambiguous or the file is unbalanced. Set dry_run=True to preview the removal
-    (line range + first lines of the block) without writing.
+    `name` matches a gui `name = "<name>"` block or a `<name> = {` script header.
+    Refuses if ambiguous or file unbalanced. dry_run=True previews (line range +
+    first lines) without writing.
     """
     return blocks.remove_block(file, name, dry_run)
 
 
 @mcp.tool()
 def check_variable_flow(prefix: str | None = None) -> str:
-    """Cross-reference every dynamic variable/array write against its reads.
+    """Cross-reference dynamic variable/array writes vs reads (common/, events/, loc [?var]).
 
-    Reports WRITE-ONLY variables (computed but never consumed - dead data) and
-    READ-ONLY variables (consumed but never fed - a system silently running on
-    nothing). Scans common/, events/, and localisation reads ([?var]).
-
-    Pass `prefix` (e.g. 'OTH_proxy') to filter the report to one system's
-    variables; omit it for a full sweep (noisier). Lexical analysis - loop
-    value-vars and meta_effect-composed names can be false positives, so treat
-    findings as leads, not verdicts.
+    Reports WRITE-ONLY (dead data) and READ-ONLY (fed by nothing) variables.
+    Pass `prefix` (e.g. 'OTH_proxy') to scope the report, omit for a full
+    (noisier) sweep. Lexical, not semantic - treat findings as leads, not verdicts.
     """
     return varflow.check_flow(prefix)
 
@@ -160,20 +125,16 @@ def check_variable_flow(prefix: str | None = None) -> str:
 def check_tokens_append_only() -> str:
     """Verify tokens.txt only changed by EOF appends since git HEAD.
 
-    synchronized_dynamic_tokens/tokens.txt is positional across MP clients:
-    reordering, mid-file inserts, or deletions shift token ids and cause OOS.
-    Run before committing any change that touches it.
+    Positional across MP clients: reorder/insert/delete shifts token ids -> OOS.
+    Run before committing any change touching it.
     """
     return tokens.verify_append_only()
 
 
 @mcp.tool()
 def add_synchronized_token(token: str) -> str:
-    """Append a token to synchronized_dynamic_tokens/tokens.txt (EOF, the only safe place).
-
-    No-op if the token is already registered. Use this instead of hand-editing
-    the file - mid-file inserts cause OOS in multiplayer.
-    """
+    """Append a token to tokens.txt at EOF (the only safe place; no-op if already
+    registered). Use instead of hand-editing - mid-file inserts cause MP OOS."""
     added = tokens.add_synchronized_token(token)
     if added:
         return f"Added '{token}' at EOF of synchronized_dynamic_tokens/tokens.txt"
@@ -182,31 +143,21 @@ def add_synchronized_token(token: str) -> str:
 
 @mcp.tool()
 def lint_trigger_contexts(file: str | None = None) -> str:
-    """Lint trigger contexts for effect statements and unguarded division.
-
-    Scripted-GUI `triggers`/`visible` blocks and everything under
-    common/scripted_triggers are trigger contexts: persistent-state effects and
-    loop effects there are silently ignored or misbehave. Also flags
-    divide_[temp_]variable by a dynamic variable with no nearby zero/exists
-    guard (per-frame 'divide by zero' log spam in GUI contexts).
-
-    Pass a mod-relative file path to lint one file, or omit to sweep
-    scripted_guis + scripted_triggers. Temp-variable math is tolerated.
+    """Lint trigger contexts (scripted_gui triggers/visible, scripted_triggers/)
+    for effect statements (silently ignored/misbehave there) and unguarded
+    divide_[temp_]variable by a dynamic var (zero-divide log spam). Pass a
+    mod-relative path for one file, omit to sweep both dirs. Temp-var math is fine.
     """
     return lint.lint(file)
 
 
 @mcp.tool()
 def check_pseudodecisions() -> str:
-    """Verify every pseudodecision registration's six-file contract is intact.
-
-    For each OTH_init_proxy_pseudodecision call in common/ideas it checks:
-    token registered in tokens.txt; every effects/triggers token has its
-    <token>_<suffix> scripted effect/trigger; a backing decision <token> and
-    dummy mission <token>_timeout exist in common/decisions (mission-type
-    pseudodecisions are exempt from the dummy); loc keys <token> and
-    <token>_desc exist. Every missing leg fails silently in-game, so run this
-    after adding or renaming any pseudodecision.
+    """Verify every pseudodecision's six-file contract (OTH_init_proxy_pseudodecision
+    in common/ideas): token in tokens.txt; <token>_<suffix> effect/trigger per
+    effects/triggers key; backing decision + <token>_timeout dummy in
+    common/decisions (missions exempt from dummy); loc keys <token>/<token>_desc.
+    Missing legs fail silently in-game - run after add/rename.
     """
     return pseudo.check()
 
@@ -230,26 +181,24 @@ def create_proxy_pseudodecision(
     ai_will_do: int | None = None,
     dry_run: bool = False,
 ) -> str:
-    """Create a proxy-war pseudodecision: all six contract files of boilerplate at once.
+    """Create a proxy-war pseudodecision: all six contract files at once.
 
-    Writes the registration under `supporter`'s block inside `proxy`'s on_add in
-    _proxy_init_ideas.txt, the backing decision (+ _timeout dummy) or backing
-    mission in OTH_proxy_wars.txt, payload/trigger stubs, PLACEHOLDER loc keys
-    (<token> and <token>_desc - no-AI-prose policy), and registers the token at
-    EOF of synchronized tokens.txt.
+    Writes registration under `supporter` in `proxy`'s on_add (_proxy_init_ideas.txt),
+    backing decision+_timeout dummy or mission (OTH_proxy_wars.txt), payload/trigger
+    stubs, PLACEHOLDER loc keys (<token>, <token>_desc - no-AI-prose policy), and
+    registers the token at tokens.txt EOF.
 
-    kind='decision': uses days_remove/days_re_enable; pass cost (political
-    power) OR intel_base_cost (wires the full 4-piece intel-cost contract:
-    custom_cost_trigger, OTH_intel_cost text + dummy decision, and the
-    OTH_spend_intel_currency block in complete_effect).
+    kind='decision': uses days_remove/days_re_enable; cost (PP) OR intel_base_cost
+    (wires custom_cost_trigger + OTH_intel_cost text/dummy decision +
+    OTH_spend_intel_currency in complete_effect).
     kind='mission': uses mission_days_timeout/mission_is_good; effects default
-    to [timeout_effect]. recurring=True makes it self-reactivate in
-    timeout_effect and count against the country's proxy_recurring_aid_cap.
+    [timeout_effect]. recurring=True -> self-reactivates, counts against
+    proxy_recurring_aid_cap.
 
-    effects from: complete_effect, remove_effect, cancel_effect, timeout_effect.
-    triggers from: visible, available, activation, custom_cost_trigger.
-    Payload/trigger stubs are placeholders to fill in by hand. Set dry_run=True
-    to preview everything without writing. Ends with a full contract check.
+    effects: complete_effect/remove_effect/cancel_effect/timeout_effect.
+    triggers: visible/available/activation/custom_cost_trigger.
+    Stubs are placeholders for hand-filling. dry_run=True previews. Ends with
+    a full contract check.
     """
     return pseudo.create(
         token=token, proxy=proxy, supporter=supporter, kind=kind,
@@ -263,14 +212,12 @@ def create_proxy_pseudodecision(
 
 @mcp.tool()
 def delete_proxy_pseudodecision(token: str, dry_run: bool = False) -> str:
-    """Delete a proxy-war pseudodecision from all its contract files, brace-safely.
+    """Delete a proxy-war pseudodecision from all contract files, brace-safely.
 
-    Removes its registration block from _proxy_init_ideas.txt, its backing
-    decision/mission and _timeout dummy from OTH_proxy_wars.txt, every
-    <token>_<suffix> payload effect and trigger, and its loc keys. Deliberately
-    does NOT touch tokens.txt (positional/append-only - removing lines causes
-    OOS; a dead token is harmless) and does not hunt bespoke references in
-    GUIs/events - those are reported for hand review. Set dry_run=True to preview.
+    Removes registration (_proxy_init_ideas.txt), backing decision/mission +
+    _timeout dummy (OTH_proxy_wars.txt), <token>_<suffix> effects/triggers, loc
+    keys. Does NOT touch tokens.txt (append-only, dead token is harmless) and
+    reports bespoke GUI/event references for hand review. dry_run=True previews.
     """
     return pseudo.delete(token, dry_run)
 
@@ -284,23 +231,19 @@ def create_us_legislation(
     timeout_days: int = 120,
     dry_run: bool = False,
 ) -> str:
-    """Create a US congress legislation (bill) entry: all 5 files of boilerplate at once.
+    """Create a US congress bill: all 5 boilerplate files at once.
 
-    Given a bill token (lowercase snake_case, e.g. 'USA_clean_air_act') this
-    registers the token in tokens.txt (EOF append), writes the four per-bill
-    defined_texts (phase/votes/attributes/sponsor) plus the four dispatcher
-    entries in OTH_USA_legislation_loc.txt, a placeholder <token>_effect in
-    the legislation scripted effects, a <token>_mission decision under
-    USA_congress_management, and the loc keys (<token>, <token>_mission,
-    <token>_mission_desc with the standard stage/votes/sponsor block,
-    <token>.tt).
+    Given a token (snake_case, e.g. 'USA_clean_air_act'): registers it in
+    tokens.txt (EOF), writes the four defined_texts (phase/votes/attributes/
+    sponsor) + four dispatcher entries in OTH_USA_legislation_loc.txt, a
+    placeholder <token>_effect, a <token>_mission decision under
+    USA_congress_management, and loc keys (<token>, <token>_mission,
+    <token>_mission_desc, <token>.tt).
 
-    By default all prose is PLACEHOLDER_* (no-AI-writing policy for loc);
-    pass name / mission_desc / effect_tooltip only with wording supplied
-    verbatim. The bill's actual passage effect must be filled in by hand in
-    <token>_effect, and the returned introduce-snippet pasted into whatever
-    focus/event spawns the bill. Set dry_run=True to preview everything
-    without writing.
+    Default PLACEHOLDER_* prose (no-AI-writing policy); pass name/mission_desc/
+    effect_tooltip only with verbatim wording. Fill <token>_effect by hand and
+    paste the returned introduce-snippet into the spawning focus/event.
+    dry_run=True previews without writing.
     """
     return legislation.create(
         token=token, name=name, mission_desc=mission_desc,
@@ -311,15 +254,12 @@ def create_us_legislation(
 
 @mcp.tool()
 def delete_us_legislation(token: str, dry_run: bool = False) -> str:
-    """Delete a US congress legislation (bill) entry, brace-safely.
+    """Delete a US congress bill, brace-safely.
 
-    Removes the bill's four defined_texts and its dispatcher entries from
-    OTH_USA_legislation_loc.txt, its <token>_effect scripted effect, its
-    <token>_mission decision, and its loc keys. Deliberately does NOT touch
-    tokens.txt (positional/append-only - removing lines causes OOS; a dead
-    token is harmless) and does not hunt down bespoke introduce-sites in
-    focuses/events - those are reported for hand review. Set dry_run=True
-    to preview.
+    Removes its four defined_texts + dispatcher entries (OTH_USA_legislation_loc.txt),
+    <token>_effect, <token>_mission decision, and loc keys. Does NOT touch
+    tokens.txt (append-only, dead token is harmless) and reports bespoke
+    focus/event introduce-sites for hand review. dry_run=True previews.
     """
     return legislation.delete(token, dry_run)
 

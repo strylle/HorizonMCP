@@ -5,11 +5,36 @@ HorizonMCP server
 # docustrings are LLM generated as it's the AI using it anyway
 
 from __future__ import annotations
+from pathlib import Path
 from mcp.server.fastmcp import FastMCP
 from .core import config, pdx
-from .tools import blocks, events, gfx, legislation, lint, pseudo, tokens, varflow
+from .tools import blocks, changed, events, gfx, legislation, lint, pseudo, tokens, varflow
 
-mcp = FastMCP("horizon-mcp")
+mcp = FastMCP(
+    "horizon-mcp",
+    instructions=(
+        "HOI4 scripting uncertainty: check hoi4_scripting_gotchas first "
+        "(silent-failure engine quirks). If still unsure, search the official "
+        "wiki (hoi4.paradoxwikis.com) before guessing."
+    ),
+)
+
+GOTCHAS_PATH = Path(__file__).parent / "docs" / "gotchas.md"
+
+
+@mcp.resource("horizon://gotchas")
+def gotchas_resource() -> str:
+    """HOI4 scripting gotchas: engine behaviors that fail silently."""
+    return GOTCHAS_PATH.read_text()
+
+
+@mcp.tool()
+def hoi4_scripting_gotchas() -> str:
+    """Silent-failure HOI4 script gotchas: temp var shadowing, scope chain-reads,
+    variable tooltips, check_variable compare, loc/gui trigger limits, effectFile
+    scale, global.date scale, iconType orientation. Call before novel script here.
+    """
+    return GOTCHAS_PATH.read_text()
 
 
 @mcp.tool()
@@ -78,25 +103,36 @@ def fix_oos_tokens(text: str | None = None, log_path: str | None = None) -> str:
 
 
 @mcp.tool()
-def check_gfx_references(file: str | None = None) -> str:
-    """Verify every GFX_ sprite reference resolves (mod .gfx + vanilla via GAME_PATH).
+def check_script(file: str | None = None, checks: list[str] | None = None) -> str:
+    """Brace balance + GFX_ sprite refs + trigger-context lint, one call.
 
-    Pass `file` (mod-relative) to check one file, omit to sweep all .gui/scripted_guis.
-    Bracket-substituted names (GFX_foo_[ROOT.GetTag]) report concrete variants found.
+    `checks`: subset of ["braces","gfx","triggers"] (default all three). Pass
+    `file` (mod-relative) to scope to one file; omit for each check's own
+    whole-mod sweep (braces: .txt/.gui/.gfx under common/events/interface;
+    gfx: .gui + scripted_guis, mod .gfx + vanilla via GAME_PATH; triggers:
+    scripted_guis + scripted_triggers, effects-in-trigger-context + unguarded
+    divide). Run after any hand edit or block removal.
     """
-    if file:
-        return gfx.check_file(file)
-    return gfx.check_all()
+    want = checks or ["braces", "gfx", "triggers"]
+    parts = []
+    if "braces" in want:
+        parts.append(blocks.validate_file(file) if file else blocks.validate_all())
+    if "gfx" in want:
+        parts.append(gfx.check_file(file) if file else gfx.check_all())
+    if "triggers" in want:
+        parts.append(lint.lint(file))
+    return "\n\n".join(parts)
 
 
 @mcp.tool()
-def validate_braces(file: str | None = None) -> str:
-    """Check brace balance (comments excluded). Pass a mod-relative path for one
-    file, or omit to sweep .txt/.gui/.gfx under common/, events/, interface/.
-    Run after any hand edit or block removal."""
-    if file:
-        return blocks.validate_file(file)
-    return blocks.validate_all()
+def lint_changed_files(against: str = "HEAD") -> str:
+    """Run brace/gfx-ref/trigger-context/tokens-append checks on git-changed
+    files only (working tree vs `against`, plus untracked). Cheap, quiet
+    default for "did I just break anything" - use check_script for a whole-mod
+    pass. Does NOT cover check_variable_flow/check_pseudodecisions - those need
+    whole-mod scope to be correct.
+    """
+    return changed.check(against)
 
 
 @mcp.tool()
@@ -139,16 +175,6 @@ def add_synchronized_token(token: str) -> str:
     if added:
         return f"Added '{token}' at EOF of synchronized_dynamic_tokens/tokens.txt"
     return f"'{token}' is already registered, no change made."
-
-
-@mcp.tool()
-def lint_trigger_contexts(file: str | None = None) -> str:
-    """Lint trigger contexts (scripted_gui triggers/visible, scripted_triggers/)
-    for effect statements (silently ignored/misbehave there) and unguarded
-    divide_[temp_]variable by a dynamic var (zero-divide log spam). Pass a
-    mod-relative path for one file, omit to sweep both dirs. Temp-var math is fine.
-    """
-    return lint.lint(file)
 
 
 @mcp.tool()
